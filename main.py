@@ -20,8 +20,8 @@ clickstreamData = [
         .option("sep", "\t") \
         .schema(schema) \
         .csv(f'/user/s1934538/clickstream/clickstream-enwiki-{year}-{month:02d}.tsv.gz') \
-            for year in range(2023, 2024) \
-            for month in range(10, 13)
+            for year in range(2018, 2024) \
+            for month in range(1, 13)
 ]
 
 # ------------ STAGE 1: Collecting top 10 most popular pages each month ------------
@@ -35,66 +35,65 @@ motherframe = spark.createDataFrame([], schema=StructType([
     StructField("file", StringType()),
 ]))
 
+# Use a motherframe for ultimate paralellisation
 for monthData in clickstreamData:
     motherframe = motherframe.union(monthData.withColumn('file', input_file_name()))
 
-    # toClicks = monthData \
-    #     .groupBy('to') \
-    #     .sum('count') \
-    #     .select(col('to').alias('url'), col('sum(count)').alias('toClicks')) \
-    #     .sort('toClicks', ascending=False) \
-    #     .limit(10) \
-    #     .select('url').rdd.flatMap(lambda x: x).collect() # https://stackoverflow.com/questions/38610559/convert-spark-dataframe-column-to-python-list
-    
-    # popularPages.update(set(toClicks))
-
 motherframe.show()
 motherframe.printSchema()
+print(f'Motherframe size == {motherframe.count()}')
 
-
-windowDept = Window.partitionBy("url").orderBy(col("toClicks").desc())
-df2=df.withColumn("row",row_number().over(windowDept))
-
-popularPages = motherframe \
+# Calculate the to amount of clicks to a page for each month
+allToClicks = motherframe \
     .groupBy(['file', 'to']) \
     .sum('count') \
-    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicks')) \
-    \
-    .withColumn('rank', row_number().over(Window.partitionBy('file', "url").orderBy(col("toClicks").desc()))) \
+    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicks'))
+
+allToClicks.show()
+allToClicks.printSchema()
+print(f'allToClicks size == {allToClicks.count()}')
+
+# Get the top 10 most popular pages per month
+popularPages = allToClicks.withColumn('rank', row_number().over(Window.partitionBy('file').orderBy(col('toClicks').desc()))) \
     .filter('rank <= 10') \
     .drop('rank')
-    # .groupBy('file').agg(slice(sort_array(collect_list(struct('toClicks', 'url')), asc=False),1,10)) \
-    # .sort('toClicks', ascending=False) \
-    # .limit(10) \
-    .select('file', 'url').collect() # https://stackoverflow.com/questions/38610559/convert-spark-dataframe-column-to-python-list
+    # rank stuff is for getting the top 10 urls per file regarding the toClicks
+    # Taken from: https://sparkbyexamples.com/pyspark/pyspark-retrieve-top-n-from-each-group-of-dataframe/
 
-print(popularPages)
-
-
+popularPages.show()
+popularPages.printSchema()
+print(f'Popular pages count == {popularPages.count()}')
 
 
-
-
-
+print("\n")
+# print([row.asDict() for row in popularPages.collect()])
+print(popularPages.select('url').distinct().collect()) # collect all (distinct) top 10 pages
 
 
 
 
 
-toClicks = tweets \
-    .groupBy('to') \
-    .sum('count') \
-    .select(col('to').alias('url'), col('sum(count)').alias('toClicks'))
 
-fromClicks =  tweets \
-    .groupBy('from') \
-    .sum('count') \
-    .select(col('from').alias('url'), col('sum(count)').alias('fromClicks'))
 
-clicks = toClicks.join(fromClicks, 'url')
 
-clicks3 = clicks \
-    .where('toClicks > 10000 and fromClicks > 10000') \
-    .withColumn('ratio', col('toClicks') / col('fromClicks')) \
-    .sort('ratio', ascending = False)
+
+
+
+
+# toClicks = tweets \
+#     .groupBy('to') \
+#     .sum('count') \
+#     .select(col('to').alias('url'), col('sum(count)').alias('toClicks'))
+
+# fromClicks =  tweets \
+#     .groupBy('from') \
+#     .sum('count') \
+#     .select(col('from').alias('url'), col('sum(count)').alias('fromClicks'))
+
+# clicks = toClicks.join(fromClicks, 'url')
+
+# clicks3 = clicks \
+#     .where('toClicks > 10000 and fromClicks > 10000') \
+#     .withColumn('ratio', col('toClicks') / col('fromClicks')) \
+#     .sort('ratio', ascending = False)
 
