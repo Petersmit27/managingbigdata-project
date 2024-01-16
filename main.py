@@ -24,7 +24,7 @@ clickstreamData = [
             for month in range(1, 13)
 ]
 
-# ------------ STAGE 1: Collecting top 10 most popular pages each month ------------
+# ------------ STAGE 1: Put the data from each month in 1 big DataFrame ------------
 popularPages = set()
 
 motherframe = spark.createDataFrame([], schema=StructType([
@@ -39,18 +39,35 @@ motherframe = spark.createDataFrame([], schema=StructType([
 for monthData in clickstreamData:
     motherframe = motherframe.union(monthData.withColumn('file', input_file_name()))
 
-# motherframe.show()
-# motherframe.printSchema()
-# print(f'Motherframe size == {motherframe.count()}')
 
-# Calculate the to amount of clicks to a page for each month
-allToClicks = motherframe \
+
+# ------------ STAGE 2: Collect the amount of clicks to each page ------------
+allLinkToClicks = motherframe \
+    .filter('type = "link"') \
     .groupBy(['file', 'to']) \
     .sum('count') \
-    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicks'))
-# .filter('type != "external"' ) \ maybe to add later in between here 
+    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicksLink'))
 
-# Get the top 10 most popular pages per month
+allExternalToClicks = motherframe \
+    .filter('type = "external"') \
+    .groupBy(['file', 'to']) \
+    .sum('count') \
+    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicksExternal'))
+
+allOtherToClicks = motherframe \
+    .filter('type = "other"') \
+    .groupBy(['file', 'to']) \
+    .sum('count') \
+    .select('file', col('to').alias('url'), col('sum(count)').alias('toClicksOther'))
+
+allToClicks = allLinkToClicks \
+    .join(allExternalToClicks, ['file', 'url']) \
+    .join(allOtherToClicks, ['file', 'url']) \
+    .withColumn('toClicks', col('toClicksLink') + col('toClicksOther') + col('toClicksExternal'))
+
+
+
+# ------------ STAGE 3: Collect the top 10 pages for each month (measured with toClicks) ------------
 popularPages = allToClicks.withColumn('rank', row_number().over(Window.partitionBy('file').orderBy(col('toClicks').desc()))) \
     .filter('rank <= 10') \
     .drop('rank')
@@ -60,40 +77,21 @@ popularPages = allToClicks.withColumn('rank', row_number().over(Window.partition
 popularPagesList = [row[0] for row in popularPages.select('url').distinct().collect()] # collect all (distinct) top 10 pages
 
 popularToClicks = allToClicks.filter(col('url').isin(popularPagesList))
+
+
+
+# ------------ STAGE 4: Collect the clicks from the popular pages to another page for each month ------------
 popularFromClicks = motherframe \
     .filter(col('from').isin(popularPagesList)) \
     .groupBy(['file', 'from']) \
     .sum('count') \
     .select('file', col('from').alias('url'), col('sum(count)').alias('fromClicks'))
 
-popularFromClicks.join(popularToClicks, ['file', 'url']) \
+
+
+# ------------ STAGE 5: Write the collected data to a csv ------------
+popularToClicks.join(popularFromClicks, ['file', 'url']) \
     .coalesce(1) \
     .write \
     .option("header", "true") \
     .csv('top10eachmonthpopular.csv', mode='overwrite')
-    
-
-
-
-
-
-
-
-
-# toClicks = tweets \
-#     .groupBy('to') \
-#     .sum('count') \
-#     .select(col('to').alias('url'), col('sum(count)').alias('toClicks'))
-
-# fromClicks =  tweets \
-#     .groupBy('from') \
-#     .sum('count') \
-#     .select(col('from').alias('url'), col('sum(count)').alias('fromClicks'))
-
-# clicks = toClicks.join(fromClicks, 'url')
-
-# clicks3 = clicks \
-#     .where('toClicks > 10000 and fromClicks > 10000') \
-#     .withColumn('ratio', col('toClicks') / col('fromClicks')) \
-#     .sort('ratio', ascending = False)
-
