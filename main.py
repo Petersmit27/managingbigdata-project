@@ -39,19 +39,16 @@ motherframe = spark.createDataFrame([], schema=StructType([
 for monthData in clickstreamData:
     motherframe = motherframe.union(monthData.withColumn('file', input_file_name()))
 
-motherframe.show()
-motherframe.printSchema()
-print(f'Motherframe size == {motherframe.count()}')
+# motherframe.show()
+# motherframe.printSchema()
+# print(f'Motherframe size == {motherframe.count()}')
 
 # Calculate the to amount of clicks to a page for each month
 allToClicks = motherframe \
     .groupBy(['file', 'to']) \
     .sum('count') \
     .select('file', col('to').alias('url'), col('sum(count)').alias('toClicks'))
-
-allToClicks.show()
-allToClicks.printSchema()
-print(f'allToClicks size == {allToClicks.count()}')
+# .filter('type != "external"' ) \ maybe to add later in between here 
 
 # Get the top 10 most popular pages per month
 popularPages = allToClicks.withColumn('rank', row_number().over(Window.partitionBy('file').orderBy(col('toClicks').desc()))) \
@@ -60,18 +57,21 @@ popularPages = allToClicks.withColumn('rank', row_number().over(Window.partition
     # rank stuff is for getting the top 10 urls per file regarding the toClicks
     # Taken from: https://sparkbyexamples.com/pyspark/pyspark-retrieve-top-n-from-each-group-of-dataframe/
 
-popularPages.show()
-popularPages.printSchema()
-print(f'Popular pages count == {popularPages.count()}')
+popularPagesList = [row[0] for row in popularPages.select('url').distinct().collect()] # collect all (distinct) top 10 pages
 
+popularToClicks = allToClicks.filter(col('url').isin(popularPagesList))
+popularFromClicks = motherframe \
+    .filter(col('from').isin(popularPagesList)) \
+    .groupBy(['file', 'from']) \
+    .sum('count') \
+    .select('file', col('from').alias('url'), col('sum(count)').alias('fromClicks'))
 
-print("\n")
-# print([row.asDict() for row in popularPages.collect()])
-print(popularPages.select('url').distinct().collect()) # collect all (distinct) top 10 pages
-
-
-
-
+popularFromClicks.join(popularToClicks, ['file', 'url']) \
+    .coalesce(1) \
+    .write \
+    .option("header", "true") \
+    .csv('top10eachmonthpopular.csv', mode='overwrite')
+    
 
 
 
