@@ -44,14 +44,9 @@ summedLinkClicks = motherframe \
     .groupBy(['year', 'from', 'to']) \
     .sum('count').withColumnRenamed('sum(count)', 'count')
 
-
-summedCleopatraClicks = summedLinkClicks \
-    .filter('from = "Cleopatra"') \
-    .groupBy(['year', 'from', 'to']) \
-    .sum('count').withColumnRenamed('sum(count)', 'count')
-
 # for the Cleopatra page, get top 100 pages of all time from it 
-popularToPages = summedCleopatraClicks \
+popularToPages = summedLinkClicks \
+    .filter('from = "Cleopatra"') \
     .groupBy(['from', 'to']) \
     .sum('count').withColumnRenamed('sum(count)', 'count') \
     .orderBy(col('count').desc()) \
