@@ -63,8 +63,8 @@ allOtherToClicks = motherframe \
 allToClicks = allLinkToClicks \
     .join(allExternalToClicks, ['file', 'url']) \
     .join(allOtherToClicks, ['file', 'url']) \
-    .withColumn('toClicks', col('toClicksLink') + col('toClicksOther') + col('toClicksExternal'))
-
+    .withColumn('toClicks', col('toClicksLink') + col('toClicksOther') + col('toClicksExternal')) \
+    .persist()
 
 
 # ------------ STAGE 3: Collect the top 10 pages for each month (measured with toClicks) ------------
@@ -94,4 +94,5 @@ popularToClicks.join(popularFromClicks, ['file', 'url']) \
     .coalesce(1) \
     .write \
     .option("header", "true") \
-    .csv('top10eachmonthpopular.csv', mode='overwrite')
+    .option("delimiter", "\t") \
+    .csv('popularity.tsv', mode='overwrite')
