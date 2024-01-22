@@ -62,6 +62,7 @@ summedLinkClicks \
     .coalesce(1) \
     .write \
     .option("header", "true") \
-    .csv('cleoclicks', mode='overwrite')
+    .option("delimiter", "\t") \
+    .csv('cleoclicks.tsv', mode='overwrite')
 
 
