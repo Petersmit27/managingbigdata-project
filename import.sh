@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for year in $(seq 2018 2022);
+for year in $(seq 2018 2023);
 do
     echo "---------- Starting $year ----------"
     for month in $(seq -f "%02g" 1 12);
